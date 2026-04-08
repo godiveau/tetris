@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TETRIS</title>
+  <style>
+    /* ============================================================
+       VARIABLES & RESET
+    ============================================================ */
+    :root {
+      --bg-deep:      #080c14;
+      --bg-panel:     #0d1320;
+      --bg-cell:      #111827;
+      --border-dim:   rgba(255,255,255,0.06);
+      --border-glow:  rgba(99,210,255,0.25);
+
+      --cyan:    #00e5ff;
+      --yellow:  #ffe600;
+      --purple:  #bf5af2;
+      --green:   #30d158;
+      --red:     #ff453a;
+      --blue:    #0a84ff;
+      --orange:  #ff9f0a;
+      --ghost:   rgba(255,255,255,0.07);
+
+      --text-primary:   #f0f4ff;
+      --text-secondary: #8899bb;
+      --text-accent:    #63d2ff;
+
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+
+      --font-display: 'Courier New', 'Lucida Console', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-deep);
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(10,132,255,0.15) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 90% 90%, rgba(191,90,242,0.1) 0%, transparent 60%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    /* ============================================================
+       LAYOUT PRINCIPAL
+    ============================================================ */
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      width: 100%;
+      max-width: 720px;
+    }
+
+    /* Titre */
+    #title-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    #title-bar h1 {
+      font-size: clamp(22px, 5vw, 38px);
+      font-weight: 900;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, var(--cyan) 0%, var(--blue) 50%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 18px rgba(0,229,255,0.45));
+    }
+    .dot-blink {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* Zone de jeu centrale */
+    #game-area {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: center;
+      width: 100%;
+    }
+
+    /* Panneau latéral */
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 130px;
+      flex-shrink: 0;
+    }
+
+    .panel-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-dim);
+      border-radius: var(--radius-md);
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .panel-card .label {
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .panel-card .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.05em;
+      line-height: 1;
+    }
+    .panel-card .value.accent { color: var(--text-accent); }
+    .panel-card .value.best  { color: var(--yellow); font-size: 18px; }
+
+    /* Canvas principal */
+    #canvas-wrap {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border-glow);
+      box-shadow:
+        0 0 0 1px var(--border-dim),
+        0 0 30px rgba(0,229,255,0.08),
+        0 30px 60px rgba(0,0,0,0.6);
+    }
+    #gameCanvas {
+      display: block;
+      border-radius: var(--radius-lg);
+    }
+
+    /* Overlay (game over / pause / start) */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-lg);
+      background: rgba(8,12,20,0.88);
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    #overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #overlay-title {
+      font-size: clamp(20px, 4vw, 30px);
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+    }
+    #overlay-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      letter-spacing: 0.12em;
+    }
+    #overlay-score-display {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--cyan);
+      filter: drop-shadow(0 0 10px var(--cyan));
+      display: none;
+    }
+
+    /* Bouton */
+    .btn {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      padding: 12px 32px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      color: #000;
+      box-shadow: 0 0 20px rgba(0,229,255,0.35), 0 4px 15px rgba(0,0,0,0.4);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 32px rgba(0,229,255,0.55), 0 8px 20px rgba(0,0,0,0.4);
+      filter: brightness(1.1);
+    }
+    .btn:active { transform: translateY(0); }
+
+    /* Canvas next piece */
+    #nextCanvas {
+      border-radius: var(--radius-sm);
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Barre de progression niveau */
+    .progress-wrap {
+      background: rgba(255,255,255,0.05);
+      border-radius: 99px;
+      height: 4px;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+    #levelBar {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--blue), var(--cyan));
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    /* Contrôles mobiles */
+    #mobile-controls {
+      display: none;
+      gap: 10px;
+      flex-direction: column;
+      align-items: center;
+    }
+    .ctrl-row { display: flex; gap: 10px; }
+    .ctrl-btn {
+      font-family: var(--font-display);
+      font-size: 18px;
+      width: 52px; height: 52px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-dim);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s, border-color 0.1s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .ctrl-btn:active {
+      background: rgba(0,229,255,0.15);
+      border-color: var(--cyan);
+    }
+    .ctrl-btn.wide { width: 116px; font-size: 12px; letter-spacing: 0.08em; }
+
+    /* Animation suppression de ligne */
+    @keyframes lineClear {
+      0%   { opacity: 1; transform: scaleX(1); }
+      40%  { opacity: 1; transform: scaleX(1.04); filter: brightness(2.5); }
+      100% { opacity: 0; transform: scaleX(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 540px) {
+      #game-area { flex-direction: column; align-items: center; }
+      .side-panel { width: 100%; flex-direction: row; flex-wrap: wrap; }
+      .panel-card { flex: 1; min-width: 80px; }
+      #mobile-controls { display: flex; }
+    }
+    @media (max-width: 360px) {
+      .side-panel { gap: 8px; }
+      .panel-card { padding: 10px 8px; }
+      .panel-card .value { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Titre -->
+  <div id="title-bar">
+    <h1>Tetris</h1>
+    <div class="dot-blink"></div>
+  </div>
+
+  <!-- Zone de jeu -->
+  <div id="game-area">
+
+    <!-- Panneau gauche -->
+    <div class="side-panel">
+      <div class="panel-card">
+        <span class="label">Score</span>
+        <span class="value accent" id="scoreDisplay">0</span>
+      </div>
+      <div class="panel-card">
+        <span class="label">Meilleur</span>
+        <span class="value best" id="bestDisplay">0</span>
+      </div>
+      <div class="panel-card">
+        <span class="label">Niveau</span>
+        <span class="value" id="levelDisplay">1</span>
+        <div class="progress-wrap"><div id="levelBar"></div></div>
+      </div>
+      <div class="panel-card">
+        <span class="label">Lignes</span>
+        <span class="value" id="linesDisplay">0</span>
+      </div>
+    </div>
+
+    <!-- Canvas principal -->
+    <div id="canvas-wrap">
+      <canvas id="gameCanvas"></canvas>
+      <div id="overlay" class="visible">
+        <div id="overlay-title">TETRIS</div>
+        <div id="overlay-score-display"></div>
+        <div id="overlay-sub">Appuie sur Entrée ou le bouton</div>
+        <button class="btn" id="startBtn">Jouer</button>
+      </div>
+    </div>
+
+    <!-- Panneau droit -->
+    <div class="side-panel">
+      <div class="panel-card">
+        <span class="label">Suivante</span>
+        <canvas id="nextCanvas" width="100" height="100"></canvas>
+      </div>
+      <div class="panel-card" style="gap:8px;">
+        <span class="label">Touches</span>
+        <div style="font-size:10px; color:var(--text-secondary); line-height:1.8; letter-spacing:0.05em;">
+          ← → &nbsp;Déplacer<br>
+          ↑ &nbsp;&nbsp;&nbsp;&nbsp;Rotation<br>
+          ↓ &nbsp;&nbsp;&nbsp;&nbsp;Descente<br>
+          Espace&nbsp;Drop
+        </div>
+      </div>
+    </div>
+  </div><!-- /game-area -->
+
+  <!-- Contrôles mobiles -->
+  <div id="mobile-controls">
+    <div class="ctrl-row">
+      <button class="ctrl-btn" id="btn-up">↑</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" id="btn-left">←</button>
+      <button class="ctrl-btn" id="btn-down">↓</button>
+      <button class="ctrl-btn" id="btn-right">→</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn wide" id="btn-drop">DROP</button>
+    </div>
+  </div>
+</div><!-- /app -->
+
+<script>
+/* ================================================================
+   TETRIS — Code complet
+   Structure :
+     1. Constantes & configuration
+     2. Définition des tétriminos
+     3. Moteur du jeu (logique pure)
+     4. Rendu (canvas)
+     5. UI (score, overlay, next piece)
+     6. Entrées clavier / tactile
+     7. Boucle de jeu (RAF)
+     8. Initialisation
+================================================================ */
+
+/* ----------------------------------------------------------------
+   1. CONSTANTES & CONFIGURATION
+---------------------------------------------------------------- */
+const COLS      = 10;
+const ROWS      = 20;
+const CELL      = 32;          // taille d'une cellule en px
+const NEXT_CELL = 22;          // taille des cellules dans la preview
+
+// Points par nombre de lignes effacées simultanément
+const SCORE_TABLE = [0, 100, 300, 500, 800];
+
+// Vitesse initiale (ms entre chaque tick) et accélération par niveau
+const BASE_SPEED  = 800;
+const SPEED_DELTA = 60;   // réduction par niveau
+const MIN_SPEED   = 80;   // plancher
+
+// Nombre de lignes pour monter d'un niveau
+const LINES_PER_LEVEL = 10;
+
+/* ----------------------------------------------------------------
+   2. TÉTRIMINOS  (forme + couleur)
+   Chaque pièce = tableau de rotations, chaque rotation = matrice
+---------------------------------------------------------------- */
+const TETROMINOES = {
+  I: {
+    color: '#00e5ff',
+    shadow: 'rgba(0,229,255,0.6)',
+    shapes: [
+      [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+      [[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]],
+      [[0,0,0,0],[0,0,0,0],[1,1,1,1],[0,0,0,0]],
+      [[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]],
+    ]
+  },
+  O: {
+    color: '#ffe600',
+    shadow: 'rgba(255,230,0,0.6)',
+    shapes: [
+      [[1,1],[1,1]],
+    ]
+  },
+  T: {
+    color: '#bf5af2',
+    shadow: 'rgba(191,90,242,0.6)',
+    shapes: [
+      [[0,1,0],[1,1,1],[0,0,0]],
+      [[0,1,0],[0,1,1],[0,1,0]],
+      [[0,0,0],[1,1,1],[0,1,0]],
+      [[0,1,0],[1,1,0],[0,1,0]],
+    ]
+  },
+  S: {
+    color: '#30d158',
+    shadow: 'rgba(48,209,88,0.6)',
+    shapes: [
+      [[0,1,1],[1,1,0],[0,0,0]],
+      [[0,1,0],[0,1,1],[0,0,1]],
+      [[0,0,0],[0,1,1],[1,1,0]],
+      [[1,0,0],[1,1,0],[0,1,0]],
+    ]
+  },
+  Z: {
+    color: '#ff453a',
+    shadow: 'rgba(255,69,58,0.6)',
+    shapes: [
+      [[1,1,0],[0,1,1],[0,0,0]],
+      [[0,0,1],[0,1,1],[0,1,0]],
+      [[0,0,0],[1,1,0],[0,1,1]],
+      [[0,1,0],[1,1,0],[1,0,0]],
+    ]
+  },
+  J: {
+    color: '#0a84ff',
+    shadow: 'rgba(10,132,255,0.6)',
+    shapes: [
+      [[1,0,0],[1,1,1],[0,0,0]],
+      [[0,1,1],[0,1,0],[0,1,0]],
+      [[0,0,0],[1,1,1],[0,0,1]],
+      [[0,1,0],[0,1,0],[1,1,0]],
+    ]
+  },
+  L: {
+    color: '#ff9f0a',
+    shadow: 'rgba(255,159,10,0.6)',
+    shapes: [
+      [[0,0,1],[1,1,1],[0,0,0]],
+      [[0,1,0],[0,1,0],[0,1,1]],
+      [[0,0,0],[1,1,1],[1,0,0]],
+      [[1,1,0],[0,1,0],[0,1,0]],
+    ]
+  },
+};
+
+const PIECE_KEYS = Object.keys(TETROMINOES);
+
+/* ----------------------------------------------------------------
+   3. MOTEUR DU JEU — logique pure (pas de DOM ici)
+---------------------------------------------------------------- */
+
+/** Crée une grille vide ROWS×COLS remplie de null */
+function createBoard() {
+  return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+}
+
+/** Renvoie une pièce aléatoire à la position de départ */
+function randomPiece() {
+  const key = PIECE_KEYS[Math.floor(Math.random() * PIECE_KEYS.length)];
+  const def = TETROMINOES[key];
+  return {
+    key,
+    color:    def.color,
+    shadow:   def.shadow,
+    shapes:   def.shapes,
+    rotation: 0,
+    x: Math.floor(COLS / 2) - Math.floor(def.shapes[0][0].length / 2),
+    y: 0,
+  };
+}
+
+/** Retourne la matrice de la rotation courante */
+function getShape(piece) {
+  return piece.shapes[piece.rotation % piece.shapes.length];
+}
+
+/**
+ * Vérifie si la pièce est en collision avec les bords ou les cellules occupées
+ * @param {Array}  board
+ * @param {Object} piece
+ * @param {number} dx   - décalage horizontal à tester
+ * @param {number} dy   - décalage vertical à tester
+ * @param {number} dr   - décalage de rotation à tester
+ */
+function collides(board, piece, dx=0, dy=0, dr=0) {
+  const newRot   = (piece.rotation + dr + piece.shapes.length) % piece.shapes.length;
+  const shape    = piece.shapes[newRot];
+  const nx       = piece.x + dx;
+  const ny       = piece.y + dy;
+
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      const boardX = nx + c;
+      const boardY = ny + r;
+      if (boardX < 0 || boardX >= COLS) return true;  // bords gauche/droit
+      if (boardY >= ROWS)              return true;  // sol
+      if (boardY >= 0 && board[boardY][boardX]) return true; // cellule occupée
+    }
+  }
+  return false;
+}
+
+/**
+ * Fige la pièce dans la grille et renvoie le nombre de lignes effacées
+ * + les indices des lignes effacées
+ */
+function lockPiece(board, piece) {
+  const shape = getShape(piece);
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      const boardY = piece.y + r;
+      const boardX = piece.x + c;
+      if (boardY >= 0) board[boardY][boardX] = piece.color;
+    }
+  }
+
+  // Chercher les lignes complètes
+  const cleared = [];
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r].every(cell => cell !== null)) cleared.push(r);
+  }
+  // Supprimer les lignes complètes et en ajouter de nouvelles en haut
+  cleared.forEach(row => {
+    board.splice(row, 1);
+    board.unshift(Array(COLS).fill(null));
+  });
+
+  return cleared.length;
+}
+
+/**
+ * Calcule la position "ghost" (ombre de chute) de la pièce courante
+ */
+function getGhostY(board, piece) {
+  let ghostY = piece.y;
+  while (!collides(board, { ...piece, y: ghostY + 1 })) ghostY++;
+  return ghostY;
+}
+
+/* ----------------------------------------------------------------
+   4. RENDU — dessine sur le canvas
+---------------------------------------------------------------- */
+const canvas     = document.getElementById('gameCanvas');
+const ctx        = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nextCtx    = nextCanvas.getContext('2d');
+
+// Dimensionner le canvas principal
+canvas.width  = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+/** Dessine une cellule avec effet glow */
+function drawCell(context, x, y, size, color, glow, alpha=1) {
+  const px = x * size;
+  const py = y * size;
+  const r  = Math.max(2, size * 0.18); // border-radius relatif
+
+  context.save();
+  context.globalAlpha = alpha;
+
+  // Ombre / glow externe
+  if (glow) {
+    context.shadowColor = glow;
+    context.shadowBlur  = size * 0.55;
+  }
+
+  // Corps de la cellule
+  context.fillStyle = color;
+  roundRect(context, px + 1, py + 1, size - 2, size - 2, r);
+  context.fill();
+
+  // Reflet supérieur (highlight)
+  const grad = context.createLinearGradient(px, py, px, py + size * 0.5);
+  grad.addColorStop(0, 'rgba(255,255,255,0.22)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  context.shadowColor = 'transparent';
+  context.shadowBlur  = 0;
+  context.fillStyle   = grad;
+  roundRect(context, px + 1, py + 1, size - 2, size * 0.45, r);
+  context.fill();
+
+  // Bord sombre en bas
+  context.strokeStyle = 'rgba(0,0,0,0.3)';
+  context.lineWidth   = 1;
+  roundRect(context, px + 1, py + 1, size - 2, size - 2, r);
+  context.stroke();
+
+  context.restore();
+}
+
+/** Helper : path rectangle arrondi */
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/** Dessine la grille (fond) */
+function drawBoard(board) {
+  // Fond
+  ctx.fillStyle = '#080c14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Lignes de grille très subtiles
+  ctx.strokeStyle = 'rgba(255,255,255,0.028)';
+  ctx.lineWidth   = 0.5;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
+    }
+  }
+
+  // Cellules occupées
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c]) {
+        const color = board[r][c];
+        // Trouver le glow associé
+        const def = Object.values(TETROMINOES).find(d => d.color === color);
+        drawCell(ctx, c, r, CELL, color, def ? def.shadow : null);
+      }
+    }
+  }
+}
+
+/** Dessine le fantôme (ghost piece) */
+function drawGhost(board, piece) {
+  if (!piece) return;
+  const ghostY = getGhostY(board, piece);
+  if (ghostY === piece.y) return;
+  const shape  = getShape(piece);
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      drawCell(ctx, piece.x + c, ghostY + r, CELL,
+        'rgba(255,255,255,0.06)', null, 1);
+    }
+  }
+}
+
+/** Dessine la pièce active */
+function drawPiece(piece) {
+  if (!piece) return;
+  const shape = getShape(piece);
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      if (piece.y + r < 0) continue; // hors grille (spawn)
+      drawCell(ctx, piece.x + c, piece.y + r, CELL, piece.color, piece.shadow);
+    }
+  }
+}
+
+/** Animation flash lors de la suppression de lignes */
+let flashRows   = [];
+let flashTimer  = 0;
+const FLASH_DUR = 180; // ms
+
+function drawLineFlash(timestamp) {
+  if (!flashRows.length) return;
+  const elapsed = timestamp - flashTimer;
+  const t       = Math.min(1, elapsed / FLASH_DUR);
+  const alpha   = 1 - t;
+
+  flashRows.forEach(row => {
+    ctx.save();
+    ctx.globalAlpha    = alpha * 0.85;
+    ctx.fillStyle      = '#ffffff';
+    ctx.shadowColor    = '#ffffff';
+    ctx.shadowBlur     = 30;
+    ctx.fillRect(0, row * CELL, canvas.width, CELL);
+    ctx.restore();
+  });
+
+  if (t >= 1) flashRows = [];
+}
+
+/** Rendu complet d'une frame */
+function render(board, piece, timestamp) {
+  drawBoard(board);
+  drawGhost(board, piece);
+  drawPiece(piece);
+  drawLineFlash(timestamp);
+}
+
+/* ----------------------------------------------------------------
+   Next piece canvas
+---------------------------------------------------------------- */
+function drawNextPiece(piece) {
+  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (!piece) return;
+  const shape = piece.shapes[0];
+  const cols  = shape[0].length;
+  const rows  = shape.length;
+  const offX  = Math.floor((nextCanvas.width  / NEXT_CELL - cols) / 2);
+  const offY  = Math.floor((nextCanvas.height / NEXT_CELL - rows) / 2);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (shape[r][c]) {
+        drawCell(nextCtx, offX + c, offY + r, NEXT_CELL, piece.color, piece.shadow);
+      }
+    }
+  }
+}
+
+/* ----------------------------------------------------------------
+   5. UI — score, niveau, overlay
+---------------------------------------------------------------- */
+const scoreEl   = document.getElementById('scoreDisplay');
+const bestEl    = document.getElementById('bestDisplay');
+const levelEl   = document.getElementById('levelDisplay');
+const linesEl   = document.getElementById('linesDisplay');
+const levelBar  = document.getElementById('levelBar');
+const overlay   = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub   = document.getElementById('overlay-sub');
+const overlayScore = document.getElementById('overlay-score-display');
+const startBtn  = document.getElementById('startBtn');
+
+let bestScore = parseInt(localStorage.getItem('tetris_best') || '0', 10);
+bestEl.textContent = bestScore;
+
+function updateUI(score, level, lines) {
+  scoreEl.textContent = score;
+  levelEl.textContent = level;
+  linesEl.textContent = lines;
+  // Barre de progression dans le niveau
+  const progress = ((lines % LINES_PER_LEVEL) / LINES_PER_LEVEL) * 100;
+  levelBar.style.width = progress + '%';
+}
+
+function showOverlay(title, sub, showScore, score) {
+  overlayTitle.textContent = title;
+  overlaySub.textContent   = sub;
+  if (showScore) {
+    overlayScore.textContent = score;
+    overlayScore.style.display = 'block';
+  } else {
+    overlayScore.style.display = 'none';
+  }
+  overlay.classList.add('visible');
+}
+
+function hideOverlay() {
+  overlay.classList.remove('visible');
+}
+
+/* ----------------------------------------------------------------
+   6. ÉTAT DU JEU
+---------------------------------------------------------------- */
+let board, currentPiece, nextPiece;
+let score, level, lines;
+let gameRunning = false;
+let gamePaused  = false;
+let lastTime    = 0;
+let dropAccum   = 0;   // accumulateur de temps (ms)
+let softDrop    = false;
+let animFrameId = null;
+
+function getDropInterval() {
+  return Math.max(MIN_SPEED, BASE_SPEED - (level - 1) * SPEED_DELTA);
+}
+
+function initGame() {
+  board        = createBoard();
+  currentPiece = randomPiece();
+  nextPiece    = randomPiece();
+  score        = 0;
+  level        = 1;
+  lines        = 0;
+  dropAccum    = 0;
+  softDrop     = false;
+  gameRunning  = true;
+  gamePaused   = false;
+  updateUI(score, level, lines);
+  drawNextPiece(nextPiece);
+}
+
+/** Dépose la pièce en cours et gère le score, le niveau, le game over */
+function lockAndAdvance() {
+  const cleared = lockPiece(board, currentPiece);
+
+  if (cleared > 0) {
+    // Déclencher l'animation flash (on mémorise les lignes AVANT suppression)
+    // Note : lockPiece modifie déjà le board, on flash après
+    flashTimer = performance.now();
+    // Recalculer les indices des lignes supprimées (après reconstruction)
+    // On flashe les ROWS - cleared dernières lignes... simplifié : flash sur toutes les lignes du bas
+    flashRows  = Array.from({ length: cleared }, (_, i) => ROWS - 1 - i);
+
+    lines += cleared;
+    const points = (SCORE_TABLE[cleared] || 0) * level;
+    score += points;
+
+    // Mise à jour du niveau
+    const newLevel = Math.floor(lines / LINES_PER_LEVEL) + 1;
+    if (newLevel > level) level = newLevel;
+
+    // Meilleur score
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem('tetris_best', bestScore);
+      bestEl.textContent = bestScore;
+    }
+
+    updateUI(score, level, lines);
+  }
+
+  // Faire avancer à la pièce suivante
+  currentPiece = nextPiece;
+  nextPiece    = randomPiece();
+  drawNextPiece(nextPiece);
+  dropAccum    = 0;
+
+  // Game Over : collision dès l'apparition
+  if (collides(board, currentPiece)) {
+    gameRunning = false;
+    showOverlay('GAME OVER', 'Score final', true, score);
+    startBtn.textContent = 'Rejouer';
+  }
+}
+
+/** Hard drop : descente instantanée */
+function hardDrop() {
+  if (!gameRunning || gamePaused) return;
+  const ghostY = getGhostY(board, currentPiece);
+  score += (ghostY - currentPiece.y) * 2; // bonus hard drop
+  currentPiece.y = ghostY;
+  updateUI(score, level, lines);
+  lockAndAdvance();
+}
+
+/** Déplacement horizontal */
+function moveX(dx) {
+  if (!gameRunning || gamePaused) return;
+  if (!collides(board, currentPiece, dx)) currentPiece.x += dx;
+}
+
+/** Rotation (avec wall kick simple) */
+function rotate() {
+  if (!gameRunning || gamePaused) return;
+  if (!collides(board, currentPiece, 0, 0, 1)) {
+    currentPiece.rotation = (currentPiece.rotation + 1) % currentPiece.shapes.length;
+    return;
+  }
+  // Wall kick : essaye ±1 et ±2
+  for (const kick of [1, -1, 2, -2]) {
+    if (!collides(board, currentPiece, kick, 0, 1)) {
+      currentPiece.x       += kick;
+      currentPiece.rotation = (currentPiece.rotation + 1) % currentPiece.shapes.length;
+      return;
+    }
+  }
+}
+
+/* ----------------------------------------------------------------
+   7. BOUCLE DE JEU
+---------------------------------------------------------------- */
+function gameLoop(timestamp) {
+  animFrameId = requestAnimationFrame(gameLoop);
+
+  if (!gameRunning || gamePaused) {
+    render(board || createBoard(), null, timestamp);
+    return;
+  }
+
+  const delta = timestamp - (lastTime || timestamp);
+  lastTime    = timestamp;
+
+  // Accumuler le temps
+  const interval = softDrop
+    ? Math.min(getDropInterval(), 60)  // accélération douce
+    : getDropInterval();
+
+  dropAccum += delta;
+
+  if (dropAccum >= interval) {
+    dropAccum = 0;
+    if (!collides(board, currentPiece, 0, 1)) {
+      currentPiece.y++;
+      if (softDrop) { score++; updateUI(score, level, lines); }
+    } else {
+      lockAndAdvance();
+    }
+  }
+
+  render(board, currentPiece, timestamp);
+}
+
+/* ----------------------------------------------------------------
+   8. ENTRÉES CLAVIER
+---------------------------------------------------------------- */
+document.addEventListener('keydown', e => {
+  switch (e.code) {
+    case 'ArrowLeft':  e.preventDefault(); moveX(-1);  break;
+    case 'ArrowRight': e.preventDefault(); moveX(1);   break;
+    case 'ArrowUp':    e.preventDefault(); rotate();   break;
+    case 'ArrowDown':  e.preventDefault(); softDrop = true; break;
+    case 'Space':
+      e.preventDefault();
+      if (gameRunning && !gamePaused) hardDrop();
+      break;
+    case 'Enter':
+      if (!gameRunning) startGame();
+      break;
+    case 'KeyP':
+    case 'Escape':
+      if (gameRunning) togglePause();
+      break;
+  }
+});
+
+document.addEventListener('keyup', e => {
+  if (e.code === 'ArrowDown') softDrop = false;
+});
+
+/* ----------------------------------------------------------------
+   CONTRÔLES MOBILES
+---------------------------------------------------------------- */
+function bindMobileBtn(id, down, up) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const onDown = e => { e.preventDefault(); down && down(); };
+  const onUp   = e => { e.preventDefault(); up   && up();   };
+  el.addEventListener('touchstart', onDown, { passive: false });
+  el.addEventListener('mousedown',  onDown);
+  if (up) {
+    el.addEventListener('touchend',  onUp, { passive: false });
+    el.addEventListener('mouseup',   onUp);
+  }
+}
+
+// Répétition auto pour gauche/droite/bas sur mobile
+function makeAutoRepeat(fn, delay=120) {
+  let timer;
+  return {
+    start() { fn(); timer = setInterval(fn, delay); },
+    stop()  { clearInterval(timer); }
+  };
+}
+
+const arLeft  = makeAutoRepeat(() => moveX(-1));
+const arRight = makeAutoRepeat(() => moveX(1));
+const arDown  = makeAutoRepeat(() => { softDrop = true; }, 80);
+
+bindMobileBtn('btn-left',  arLeft.start,  arLeft.stop);
+bindMobileBtn('btn-right', arRight.start, arRight.stop);
+bindMobileBtn('btn-up',    () => rotate());
+bindMobileBtn('btn-down',  arDown.start,  () => { softDrop = false; arDown.stop(); });
+bindMobileBtn('btn-drop',  () => hardDrop());
+
+/* ----------------------------------------------------------------
+   9. DÉMARRAGE / PAUSE
+---------------------------------------------------------------- */
+function startGame() {
+  hideOverlay();
+  initGame();
+  lastTime = 0;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(gameLoop);
+}
+
+function togglePause() {
+  gamePaused = !gamePaused;
+  if (gamePaused) {
+    showOverlay('PAUSE', 'Appuie sur P pour reprendre', false, 0);
+  } else {
+    hideOverlay();
+    lastTime = 0; // éviter un grand delta après pause
+  }
+}
+
+startBtn.addEventListener('click', startGame);
+
+// Premier rendu (écran titre)
+board = createBoard();
+requestAnimationFrame(ts => render(board, null, ts));
+</script>
+</body>
+</html>
