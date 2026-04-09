@@ -335,7 +335,7 @@
     <div class="side-panel">
       <div class="panel-card">
         <span class="label">Suivante</span>
-        <canvas id="nextCanvas" width="100" height="100"></canvas>
+        <canvas id="nextCanvas"></canvas>
       </div>
       <div class="panel-card" style="gap:8px;">
         <span class="label">Touches</span>
@@ -384,8 +384,10 @@
 ---------------------------------------------------------------- */
 const COLS      = 10;
 const ROWS      = 20;
-const CELL      = 32;          // taille d'une cellule en px
-const NEXT_CELL = 22;          // taille des cellules dans la preview
+// Calcul dynamique : le canvas doit tenir dans 90% de la hauteur viewport
+// en réservant ~80px pour le titre et les marges
+const CELL      = Math.max(20, Math.min(32, Math.floor((window.innerHeight - 120) / ROWS)));
+const NEXT_CELL = Math.max(16, Math.round(CELL * 0.68));
 
 // Points par nombre de lignes effacées simultanément
 const SCORE_TABLE = [0, 100, 300, 500, 800];
@@ -579,6 +581,11 @@ const nextCtx    = nextCanvas.getContext('2d');
 // Dimensionner le canvas principal
 canvas.width  = COLS * CELL;
 canvas.height = ROWS * CELL;
+
+// Dimensionner le canvas next piece
+const NEXT_SIZE = NEXT_CELL * 5;
+nextCanvas.width  = NEXT_SIZE;
+nextCanvas.height = NEXT_SIZE;
 
 /** Dessine une cellule avec effet glow */
 function drawCell(context, x, y, size, color, glow, alpha=1) {
